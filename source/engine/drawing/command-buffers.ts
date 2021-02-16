@@ -13,28 +13,24 @@ import {
   VkCommandPool,
   VkCommandPoolCreateInfo,
   vkCreateCommandPool,
-  vkCreateFramebuffer,
   VkDevice,
   vkEndCommandBuffer,
-  VkFramebuffer,
-  VkFramebufferCreateInfo,
   VkImageView,
-  VkInout,
   VkOffset2D,
   VkPhysicalDevice,
   VkRect2D,
-  VkRenderPass,
   VkRenderPassBeginInfo,
   VkStructureType,
   VK_COMMAND_BUFFER_LEVEL_PRIMARY,
   VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
   VK_PIPELINE_BIND_POINT_GRAPHICS,
-  VK_SUBPASS_CONTENTS_INLINE,
-  VulkanWindow
+  VK_SUBPASS_CONTENTS_INLINE
 } from "nvk";
-import { getExtent2D } from "../window";
+import { View, getExtent2D } from "../view";
 import { submit } from "../vulkan";
-import { createPipeline } from "./pipeline";
+import { createPipeline } from "../pipeline";
+import { createRenderPass } from "../pipeline/render-pass";
+import { createFrameBuffers } from "./frame-buffers";
 import { createVertexBuffer } from "./vertex-buffer";
 
 export function createCommandPool(device: VkDevice) {
@@ -48,66 +44,38 @@ export function createCommandPool(device: VkDevice) {
   return commandPool;
 }
 
-// eslint-disable-next-line max-params
-function getFramebuffers(
-  window: VulkanWindow,
-  device: VkDevice,
-  amountOfImagesInSwapchain: VkInout,
-  imageViews: VkImageView[],
-  renderPass: VkRenderPass | null | undefined
-) {
-  const framebuffers = [...Array(amountOfImagesInSwapchain.$)].map(() => new VkFramebuffer());
-  for(let i=0; i<amountOfImagesInSwapchain.$; i+=1) {
-    const framebufferInfo = new VkFramebufferCreateInfo({
-      sType: VkStructureType.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-      renderPass,
-      attachmentCount: 1,
-      pAttachments: [imageViews[i]],
-      width: window.width,
-      height: window.height,
-      layers: 1
-    })
-    submit(vkCreateFramebuffer, device, framebufferInfo, null, framebuffers[i]);
-  }
-  return framebuffers;
-}
-
-// - window
-// renderPass
-// - imageViews
-// pipeline
-// vertexBuffer
 export function createCommandBuffers(
-  window: VulkanWindow,
+  view: View,
   device: VkDevice,
   physicalDevice: VkPhysicalDevice,
-  amountOfImagesInSwapchain: { $: number },
   imageViews: VkImageView[],
-  renderPass: VkRenderPass
+  vertices: Float32Array
 ) {
-  const commandPool = createCommandPool(device);
-  const framebuffers = getFramebuffers(window, device, amountOfImagesInSwapchain, imageViews, renderPass);
+  // Create Pipeline
+  const renderPass = createRenderPass(device);
+  const pipeline = createPipeline(view, device, renderPass);
+
+  // Create FrameBuffers
+  const frameBuffers = createFrameBuffers(view, device, imageViews, renderPass);
+
+  // Allocate Command Buffers
   const bufferAllocInfo = new VkCommandBufferAllocateInfo({
     sType: VkStructureType.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-    commandPool,
+    commandPool: createCommandPool(device),
     level: VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-    commandBufferCount: amountOfImagesInSwapchain.$
+    commandBufferCount: imageViews.length
   });
-  const commandBuffers = [...Array(amountOfImagesInSwapchain.$)].map(() => new VkCommandBuffer());
+  const commandBuffers = [...Array(imageViews.length)].map(() => new VkCommandBuffer());
   submit(vkAllocateCommandBuffers, device, bufferAllocInfo, commandBuffers);
+
+  // Create Vertex Buffer
+  const vertexBuffer = createVertexBuffer(device, physicalDevice, vertices);
 
   const bufferBeginInfo = new VkCommandBufferBeginInfo({
     sType: VkStructureType.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
     flags: VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
     pInheritanceInfo: null
   });
-  const vertices = new Float32Array([
-    0.0, -0.5,
-    0.5, 0.5,
-    -0.5, 0.5
-  ]);
-  const vertexBuffer = createVertexBuffer(device, physicalDevice, vertices);
-  const pipeline = createPipeline(window, device, renderPass, vertices);
   for(let i=0; i<commandBuffers.length; i+=1) {
     const buffer = commandBuffers[i];
     submit(vkBeginCommandBuffer, buffer, bufferBeginInfo);
@@ -116,13 +84,13 @@ export function createCommandBuffers(
     const renderPassBeginInfo = new VkRenderPassBeginInfo({
       sType: VkStructureType.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
       renderPass,
-      framebuffer: framebuffers[i],
+      framebuffer: frameBuffers[i],
       renderArea: new VkRect2D({
         offset: new VkOffset2D({
           x: 0,
           y: 0
         }),
-        extent: getExtent2D(window)
+        extent: getExtent2D(view)
       }),
       clearValueCount: 1,
       pClearValues: [clearValue]
@@ -131,7 +99,7 @@ export function createCommandBuffers(
     vkCmdBeginRenderPass(buffer, renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     vkCmdBindVertexBuffers(buffer, 0, 1, [vertexBuffer], new BigUint64Array([0n]));
-    vkCmdDraw(buffer, 3, 1, 0, 0);
+    vkCmdDraw(buffer, vertices.length, 1, 0, 0);
     vkCmdEndRenderPass(buffer);
     submit(vkEndCommandBuffer, buffer);
   }

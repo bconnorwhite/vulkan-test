@@ -11,7 +11,7 @@ import {
   VK_SHADER_STAGE_VERTEX_BIT
 } from "nvk";
 import { GLSL } from "nvk-essentials";
-import { submit } from "../../vulkan";
+import { submit } from "../vulkan";
 
 function createShaderModule(device: VkDevice, shaderSrc: Uint8Array, shaderModule: VkShaderModule) {
   const shaderModuleInfo = new VkShaderModuleCreateInfo({

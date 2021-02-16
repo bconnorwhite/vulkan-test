@@ -1,5 +1,5 @@
 import { vkCreateSemaphore, VkDevice, VkSemaphore, VkSemaphoreCreateInfo, VkStructureType } from "nvk";
-import { submit } from "./vulkan";
+import { submit } from "../vulkan";
 
 const semaphoreInfo = new VkSemaphoreCreateInfo({
   sType: VkStructureType.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO

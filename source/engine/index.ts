@@ -1,5 +1,4 @@
 import {
-  VulkanWindow,
   vkAcquireNextImageKHR,
   VkPresentInfoKHR,
   vkQueuePresentKHR,
@@ -14,22 +13,18 @@ import {
   VkQueue,
   VkCommandBuffer
 } from "nvk";
-import { submit } from "./vulkan";
-import { createWindow } from "./window";
-import { createInstance } from "./instance";
-import { getPhysicalDevice, createDevice, getQueue } from "./device";
-import { createSurface } from "./surface";
-import { createSwapchain, getAmountOfImagesInSwapchain, getImageViews } from "./swapchain";
-import { createRenderPass } from "./render-pass";
-import { createCommandBuffers } from "./command";
-import { createSemaphore } from "./semaphore";
+import { createWindow, View } from "./view";
+import { setupVulkan, submit } from "./vulkan";
+import { createSwapchain, getImageViews } from "./swapchain";
+import { createCommandBuffers } from "./drawing/command-buffers";
+import { createSemaphore } from "./drawing/semaphore";
 
 type EngineParams = {
-  window: VulkanWindowInitializer;
+  view: VulkanWindowInitializer;
 }
 
 type Engine = {
-  window: VulkanWindow;
+  view: View;
   device: VkDevice;
   queue: VkQueue;
   swapchain: VkSwapchainKHR;
@@ -38,26 +33,38 @@ type Engine = {
   renderingAvailable: VkSemaphore;
 }
 
+const vertices = new Float32Array([
+  -0.5, 0.0,
+  0.0, 1.0,
+  -1.0, 1.0,
+  0.5, 0.0,
+  1.0, 1.0,
+  0.0, 1.0,
+  0.0, -1.0,
+  0.5, 0.0,
+  -0.5, 0.0
+]);
+
 export function init(params: EngineParams): Engine {
-  const window = createWindow({
-    title: "Triangle",
-    width: 480,
-    height: 320
-  });
-  const instance = createInstance(window, params.window.title);
-  const physicalDevice = getPhysicalDevice(instance);
-  const device = createDevice(physicalDevice);
-  const queue = getQueue(device);
-  const surface = createSurface(window, instance, physicalDevice);
-  const swapchain = createSwapchain(window, device, surface);
-  const amountOfImagesInSwapchain = getAmountOfImagesInSwapchain(device, swapchain);
-  const imageViews = getImageViews(device, swapchain, amountOfImagesInSwapchain);
-  const renderPass = createRenderPass(device);
-  const commandBuffers = createCommandBuffers(window, device, physicalDevice, amountOfImagesInSwapchain, imageViews, renderPass);
+  // Window
+  const view = createWindow(params.view);
+  // Setup
+  const { instance, physicalDevice, device, queue } = setupVulkan(view);
+  // Swapchain
+  const swapchain = createSwapchain(view, instance, physicalDevice, device);
+  const imageViews = getImageViews(device, swapchain);
+
+  const commandBuffers = createCommandBuffers(
+    view,
+    device,
+    physicalDevice,
+    imageViews,
+    vertices
+  );
   const imageAvailable = createSemaphore(device);
   const renderingAvailable = createSemaphore(device);
   return {
-    window,
+    view,
     device,
     queue,
     swapchain,
@@ -76,8 +83,7 @@ function drawFrame({
   queue
 }: Engine) {
   const imageIndex = { $: 0 };
-
-  submit(vkAcquireNextImageKHR, device, swapchain, Number.MAX_SAFE_INTEGER, imageAvailable, null, imageIndex)
+  submit(vkAcquireNextImageKHR, device, swapchain, Number.MAX_SAFE_INTEGER, imageAvailable, null, imageIndex);
 
   const submitInfo = new VkSubmitInfo({
     sType: VkStructureType.VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -104,11 +110,13 @@ function drawFrame({
     pResults: null
   });
 
-  submit(vkQueuePresentKHR, queue, presentInfo);
+  submit(vkQueuePresentKHR, queue, presentInfo); // TODO: onresize()
 }
 
-export function render(engine: Engine) {
+export function render(engine: Engine, rate = 1) {
   drawFrame(engine);
-  engine.window.pollEvents();
-  return !engine.window.shouldClose();
+  engine.view.pollEvents?.();
+  if(engine.view.shouldClose?.() === false) {
+    setTimeout(() => render(engine, rate), 1000 / rate);
+  }
 }

@@ -55,7 +55,6 @@ function allocateMemory(device: VkDevice, physicalDevice: VkPhysicalDevice, buff
 
 export function createVertexBuffer(device: VkDevice, physicalDevice: VkPhysicalDevice, vertices: Float32Array) {
   const buffer = new VkBuffer();
-  const bufferMemory = new VkDeviceMemory();
   const bufferInfo = new VkBufferCreateInfo({
     sType: VkStructureType.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
     size: vertices.byteLength,
@@ -66,6 +65,7 @@ export function createVertexBuffer(device: VkDevice, physicalDevice: VkPhysicalD
   });
   submit(vkCreateBuffer, device, bufferInfo, null, buffer);
 
+  const bufferMemory = new VkDeviceMemory();
   allocateMemory(device, physicalDevice, buffer, bufferMemory);
   submit(vkBindBufferMemory, device, buffer, bufferMemory, 0n);
 

@@ -23,7 +23,7 @@ import {
   VK_SAMPLE_COUNT_1_BIT,
   VK_SUBPASS_EXTERNAL
 } from "nvk";
-import { submit } from "./vulkan";
+import { submit } from "../vulkan";
 
 const renderPassInfo = new VkRenderPassCreateInfo({
   sType: VkStructureType.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
